@@ -1,78 +1,16 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strconv"
+	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
-
-func main() {
-
-	arg_num := len(os.Args)
-
-	if arg_num != 3 {
-		fmt.Printf("Usage is \" files_will_be_deleted_in_directory \"  elapsed_time_in_hours(min 3 hours) \n")
-		return
-	}
-
-	var path string = os.Args[1]
-	checkPath(path)
-
-	h, _ := strconv.ParseInt(os.Args[2], 0, 64)
-	if h < 3 {
-		h = 3
-	}
-
-	var beforeTime time.Duration = -(time.Duration(h)) * time.Hour
-	checkTime := time.Now().Add(beforeTime)
-
-	files, err := ioutil.ReadDir(os.Args[1])
-
-	if err != nil {
-		fmt.Printf("error, %v", err)
-		return
-	}
-
-	dtf := DeleteTempFile{Path: path}
-
-	fiChan := make(chan os.FileInfo, 1)
-
-	for i := 0; i < 10; i++ {
-		go dtf.Delete(fiChan)
-	}
-
-	var willDeleteFileNum int32
-
-	for _, f := range files {
-		if f.ModTime().Before(checkTime) {
-			fiChan <- f
-			willDeleteFileNum++
-		}
-	}
-
-	var delayCount int
-	for delayCount < 1000 {
-		delayCount++
-		if willDeleteFileNum <= dtf.DeletedFileNum {
-			break
-		}
-
-		time.Sleep(time.Second)
-	}
-
-	dtf.ShowResult()
-	fmt.Printf(" \n total file is %v, time is %v, game is over \n", len(files), time.Now())
-}
-
-func checkPath(path string) {
-	if !strings.HasPrefix(path, "/data/") {
-		panic(" path " + path + " is illegal,  only subdirectory in  \"/data\"  is permitted")
-	}
-}
 
 type DeleteTempFile struct {
 	StorageSize, FileNum int64
@@ -80,34 +18,86 @@ type DeleteTempFile struct {
 	Path                 string
 }
 
-func (me *DeleteTempFile) Delete(fiChan chan os.FileInfo) {
-	for {
-		me.deleteAFile(fiChan)
+func main() {
+	if len(os.Args) != 3 {
+		fmt.Printf(" Userage is \" -dir=/data/okk  -hour=3 \" ")
+		return
 	}
-}
-func (me *DeleteTempFile) deleteAFile(fiChan chan os.FileInfo) {
-	fi := <-fiChan
 
-	defer func() {
-		atomic.AddInt32(&me.DeletedFileNum, 1)
-		if r := recover(); r != nil {
-			fmt.Printf("\n delete file %s panic, Recovered panic: %s ", fi.Name(), r)
-		}
-	}()
+	var path string
+	flag.StringVar(&path, "dir", "/data/okk", " files_will_be_deleted_in_directory ")
 
-	me.deleteFileFromOS(fi)
-}
-func (me *DeleteTempFile) deleteFileFromOS(f os.FileInfo) {
-	err := os.Remove(me.Path + "/" + f.Name())
+	var h int64
+	flag.Int64Var(&h, "hour", 3, " elapsed_time_in_hours(min 3 hours)")
+	flag.Parse()
 
+	if h < 3 {
+		h = 3
+	}
+
+	err := checkPath(path)
 	if err != nil {
-		fmt.Println("delete file :%s fails, error info is : %v", f.Name, err)
-	} else {
-		atomic.AddInt64(&me.StorageSize, f.Size())
-		atomic.AddInt64(&me.FileNum, 1)
+		fmt.Printf(" path error, %v", err)
+		return
+	}
 
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		fmt.Printf("read dir error, %v", err)
+		return
+	}
+
+	var wg sync.WaitGroup
+	dtf := DeleteTempFile{Path: path}
+	fiChan := make(chan os.FileInfo, 100)
+
+	for i := 0; i < 10; i++ {
+		go dtf.Delete(fiChan, &wg)
+	}
+
+	//checkTime := time.Now().Add(-(time.Duration(h)) * time.Hour)
+	checkTime := time.Now().Add(-(time.Duration(h)) * time.Second)
+	for _, f := range files {
+		if f.ModTime().Before(checkTime) {
+			wg.Add(1)
+			fiChan <- f
+		}
+	}
+	wg.Wait()
+	dtf.ShowResult()
+	fmt.Printf(" \n total file is %v, now is %s, game is over \n", len(files), time.Now().Format(time.RFC850))
+}
+
+func checkPath(path string) error {
+	if !strings.HasPrefix(path, "/data/") {
+		return fmt.Errorf(" path  %s is illegal,  only subdirectory in  \"/data\"  is permitted", path)
+	}
+	return nil
+}
+
+func (dtf *DeleteTempFile) Delete(fiChan chan os.FileInfo, wg *sync.WaitGroup) {
+	for {
+		err := dtf.deleteAFile(fiChan, wg)
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
 }
+
+func (dtf *DeleteTempFile) deleteAFile(fiChan chan os.FileInfo, wg *sync.WaitGroup) error {
+	f := <-fiChan
+	defer wg.Done()
+
+	err := os.Remove(filepath.Join(dtf.Path, f.Name()))
+	if err != nil {
+		return fmt.Errorf("\n delete file :%s fails, error info is : %v", f.Name, err)
+	} else {
+		atomic.AddInt64(&dtf.StorageSize, f.Size())
+		atomic.AddInt64(&dtf.FileNum, 1)
+	}
+	return nil
+}
+
 func (me *DeleteTempFile) ShowResult() {
 
 	fmt.Printf("\n   save StorageSize: %v Bytes,  delete file number: %v ", me.StorageSize, me.FileNum)
