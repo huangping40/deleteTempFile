@@ -41,23 +41,28 @@ func main() {
 		return
 	}
 
+	beginReadDirTime := time.Now()
 	files, err := ioutil.ReadDir(path)
 	if err != nil {
 		fmt.Printf("read dir error, %v", err)
 		return
 	}
+	endReadDirTime := time.Now()
+	fmt.Printf("read dir cost, %v Secs \n", endReadDirTime.Sub(beginReadDirTime).Seconds())
 
 	var wg sync.WaitGroup
 	dtf := DeleteTempFile{Path: path}
 	fiChan := make(chan os.FileInfo, 100)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		go dtf.Delete(fiChan, &wg)
 	}
 
-	//checkTime := time.Now().Add(-(time.Duration(h)) * time.Hour)
-	checkTime := time.Now().Add(-(time.Duration(h)) * time.Second)
+	checkTime := time.Now().Add(-(time.Duration(h)) * time.Hour)
 	for _, f := range files {
+		if isInvalidFile(f) {
+			continue
+		}
 		if f.ModTime().Before(checkTime) {
 			wg.Add(1)
 			fiChan <- f
@@ -75,6 +80,23 @@ func checkPath(path string) error {
 	return nil
 }
 
+func isInvalidFile(f os.FileInfo) bool {
+	if f.IsDir() {
+		return true
+	}
+	name := f.Name()
+	flen := len(name)
+	if flen < 47 {
+		return true
+	}
+	pointLocation := strings.LastIndex(name, ".")
+	fmt.Printf(" suffix len:  %v,  %v", pointLocation, flen-pointLocation)
+	if pointLocation > 0 && flen-pointLocation < 45 {
+		return true
+	}
+	return false
+}
+
 func (dtf *DeleteTempFile) Delete(fiChan chan os.FileInfo, wg *sync.WaitGroup) {
 	for {
 		err := dtf.deleteAFile(fiChan, wg)
@@ -89,17 +111,18 @@ func (dtf *DeleteTempFile) deleteAFile(fiChan chan os.FileInfo, wg *sync.WaitGro
 	defer wg.Done()
 
 	err := os.Remove(filepath.Join(dtf.Path, f.Name()))
+	time.Sleep(time.Millisecond * 100)
 	if err != nil {
 		return fmt.Errorf("\n delete file :%s fails, error info is : %v", f.Name, err)
 	} else {
 		atomic.AddInt64(&dtf.StorageSize, f.Size())
-		atomic.AddInt64(&dtf.FileNum, 1)
+		if atomic.AddInt64(&dtf.FileNum, 1)%1000 == 0 {
+			fmt.Printf("\n   save StorageSize: %v Bytes,  delete file number: %v ", dtf.StorageSize, dtf.FileNum)
+		}
 	}
 	return nil
 }
 
-func (me *DeleteTempFile) ShowResult() {
-
-	fmt.Printf("\n   save StorageSize: %v Bytes,  delete file number: %v ", me.StorageSize, me.FileNum)
-
+func (dtf *DeleteTempFile) ShowResult() {
+	fmt.Printf("\n   save StorageSize: %v Bytes,  delete file number: %v ", dtf.StorageSize, dtf.FileNum)
 }
