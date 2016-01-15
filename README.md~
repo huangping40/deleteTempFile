@@ -15,8 +15,7 @@ result example:
 
 
    
-#/deleteTempFileInFiles  
-删除 在一个目录下且文件名已经保存在本文件中的， 修改时间超过-hour= 小时的。文件名词要求 47个字符以上，且 文件后缀长度大于等于40
+#/deleteTempFileInFiles  删除 在一个目录下且文件名已经保存在本文件中的， 修改时间超过-hour= 小时的。文件名词要求 47个字符以上，且 文件后缀长度大于等于40
 
 如：cat /data/test/readme  |  xargs -i -t  ./deleteTempFileInFiles  -dir=/data/test -filename={}  -hour=2
 
