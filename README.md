@@ -1,10 +1,10 @@
 # deleteTempFileInFiles
 删除一个目录下，最后修改时间早于hour小时前的文件。文件名词要求 47个字符以上， 文件后缀长度大于等于40
-delete temp files n hours ago
 
-**example**:  delete files modified 5 hours ago in  directory  /data/tempdir/, not include  subdirectory.and write result  to file /tmp/deleteTempFileResult.txt
+
+**example**:  
     
-    deleteTempFile  -dir=/data/tempdir/   -hour=5  >> /tmp/deleteTempFileResult.txt
+    deleteTempFileInFiles  -dir=/data/tempdir/   -hour=5  >> /tmp/deleteTempFileResult.txt
     
 result example:
 
