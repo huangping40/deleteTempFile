@@ -4,6 +4,7 @@
 
 **example**:  
     
+
     deleteTempFileInDir  -dir=/data/tempdir/   -hour=5  >> /tmp/deleteTempFileResult.txt
     
 result example:
